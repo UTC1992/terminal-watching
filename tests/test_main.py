@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from terminal_watching.main import main, cmd_list, cmd_init
+from terminal_watching.main import main, cmd_list, cmd_init, cmd_run
 
 
 class TestCmdList:
@@ -64,3 +64,38 @@ class TestCmdInit:
         cmd_init(str(tmp_path))
         mock_wizard.assert_called_once()
         mock_save.assert_called_once()
+
+
+class TestCmdRunAutoInit:
+    @patch("terminal_watching.main.config_exists", return_value=False)
+    @patch("terminal_watching.main.detect_project", return_value=None)
+    @patch("terminal_watching.main.cmd_init")
+    def test_no_detection_launches_init(self, mock_init, mock_detect, mock_cfg, tmp_path):
+        """When no tw.yml and no detection, cmd_run should launch init instead of exiting."""
+        cmd_run(str(tmp_path))
+        mock_init.assert_called_once_with(str(tmp_path))
+
+    @patch("terminal_watching.main.Dashboard")
+    @patch("terminal_watching.main.cmd_init")
+    @patch("terminal_watching.main.detect_project", return_value=None)
+    def test_after_init_starts_dashboard(self, mock_detect, mock_init, mock_dash, tmp_path):
+        """After init creates tw.yml, cmd_run should start the dashboard."""
+        config_path = str(tmp_path / "tw.yml")
+        sample = {
+            "name": "Custom",
+            "command": "make run",
+            "port": 3000,
+            "ready_pattern": "ready",
+            "error_patterns": ["Error"],
+            "watch": {"dirs": ["src"], "extensions": ["py"], "exclude": []},
+        }
+        # Simulate init creating the config file
+        from terminal_watching.infrastructure.config_loader import save_config
+        mock_init.side_effect = lambda d: save_config(config_path, sample)
+
+        mock_dash_instance = MagicMock()
+        mock_dash.return_value = mock_dash_instance
+
+        cmd_run(str(tmp_path))
+        mock_init.assert_called_once()
+        mock_dash_instance.run.assert_called_once()

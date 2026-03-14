@@ -60,8 +60,13 @@ def cmd_run(project_dir: str, config_path: str = None) -> None:
             print("Run 'tw init' to customize.\n")
         else:
             print("Could not detect project type.")
-            print("Run 'tw init' to set up manually.\n")
-            sys.exit(1)
+            print("Launching setup wizard...\n")
+            cmd_init(project_dir)
+            # After init, try loading the newly created config
+            if config_exists(config_path):
+                config = load_config(config_path)
+            else:
+                return
 
     # Build command
     command = config['command']

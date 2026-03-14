@@ -44,7 +44,7 @@ class Dashboard:
         self._state = AppState()
         self._state.project_name = project_name
         self._state.port = port
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._running = False
         self._auto_scroll = True
         self._dirty = True

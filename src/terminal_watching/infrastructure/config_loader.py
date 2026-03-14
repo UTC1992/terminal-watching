@@ -104,7 +104,7 @@ def load_config(path: str) -> dict:
 
         # Section keys (watch.dirs, watch.extensions, etc.)
         if current_section == 'watch':
-            sub_match = re.match(r'^\s{2}(\w+):', stripped)
+            sub_match = re.match(r'^(\w+):', stripped)
             if sub_match:
                 sub_key = sub_match.group(1)
                 if sub_key in config['watch']:

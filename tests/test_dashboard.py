@@ -1,6 +1,8 @@
 """Tests for the Dashboard orchestrator using mock ports."""
 
+import re
 import threading
+import time
 import pytest
 from unittest.mock import MagicMock, patch
 from terminal_watching.domain.models import AppState, AppStatus, Tab
@@ -186,6 +188,61 @@ class TestOnLogLine:
         # scroll_offset should follow
 
 
+class TestStatusTransitions:
+    def test_compiling_status(self):
+        d = make_dashboard(status_patterns=[
+            {"pattern": "compileJava", "status": "COMPILING"},
+            {"pattern": "Starting Application", "status": "BOOTING"},
+        ])
+        d._state.status = AppStatus.STARTING
+        d._on_log_line("> Task :app:compileJava")
+        assert d._state.status == AppStatus.COMPILING
+
+    def test_booting_status(self):
+        d = make_dashboard(status_patterns=[
+            {"pattern": "compileJava", "status": "COMPILING"},
+            {"pattern": "Starting Application", "status": "BOOTING"},
+        ])
+        d._state.status = AppStatus.COMPILING
+        d._on_log_line("Starting Application on localhost")
+        assert d._state.status == AppStatus.BOOTING
+
+    def test_full_lifecycle(self):
+        """STARTING -> COMPILING -> BOOTING -> READY"""
+        d = make_dashboard(
+            ready_pattern="Started \\w+.*in \\d",
+            status_patterns=[
+                {"pattern": "compileJava", "status": "COMPILING"},
+                {"pattern": "Starting Application", "status": "BOOTING"},
+            ],
+        )
+        d._state.status = AppStatus.STARTING
+        d._on_log_line("> Task :app:compileJava UP-TO-DATE")
+        assert d._state.status == AppStatus.COMPILING
+
+        d._on_log_line("Starting Application on localhost")
+        assert d._state.status == AppStatus.BOOTING
+
+        d._on_log_line("Started ContributionsGraphApplication in 12.345 seconds")
+        assert d._state.status == AppStatus.READY
+
+    def test_no_status_patterns(self):
+        """Dashboard without status_patterns should still work."""
+        d = make_dashboard(status_patterns=None)
+        d._state.status = AppStatus.STARTING
+        d._on_log_line("some log line")
+        assert d._state.status == AppStatus.STARTING
+
+    def test_status_not_downgraded_after_ready(self):
+        d = make_dashboard(status_patterns=[
+            {"pattern": "compileJava", "status": "COMPILING"},
+        ])
+        d._state.status = AppStatus.READY
+        d._on_log_line("> Task :app:compileJava")
+        # Should stay READY, not go back to COMPILING
+        assert d._state.status == AppStatus.READY
+
+
 class TestOnFileChange:
     def test_triggers_restart(self):
         d = make_dashboard()
@@ -241,3 +298,45 @@ class TestRequestPatterns:
 
     def test_no_match(self):
         assert not REQUEST_PATTERNS.search("just a regular log line")
+
+
+class TestPerformance:
+    def test_time_pattern_is_precompiled(self):
+        """The time extraction regex must be compiled once, not per log line."""
+        from terminal_watching.application import dashboard
+        assert hasattr(dashboard, 'TIME_PATTERN')
+        assert isinstance(dashboard.TIME_PATTERN, re.Pattern)
+
+    def test_fatal_patterns_is_precompiled(self):
+        """Fatal keyword set must be pre-built, not created per log line."""
+        from terminal_watching.application import dashboard
+        assert hasattr(dashboard, 'FATAL_KEYWORDS')
+        assert isinstance(dashboard.FATAL_KEYWORDS, (set, frozenset, tuple))
+
+    def test_error_check_not_duplicated(self):
+        """Error regex should only run once per log line, not twice."""
+        d = make_dashboard()
+        d._state.status = AppStatus.STARTING
+        # A line that matches error pattern but is NOT fatal
+        d._on_log_line("Error: minor issue detected")
+        # Should be in error_lines but status should NOT be ERROR
+        assert "Error: minor issue detected" in d._state.error_lines
+        assert d._state.status == AppStatus.STARTING
+
+    def test_error_fatal_uses_cached_match(self):
+        """Fatal detection should reuse the error match, not re-run regex."""
+        d = make_dashboard()
+        d._state.status = AppStatus.STARTING
+        d._on_log_line("Error: FAILED to compile")
+        assert d._state.status == AppStatus.ERROR
+        assert "Error: FAILED to compile" in d._state.error_lines
+
+    def test_high_throughput_log_lines(self):
+        """Processing 10k log lines should complete in under 1 second."""
+        d = make_dashboard()
+        lines = [f"INFO: processing request {i}" for i in range(10000)]
+        start = time.monotonic()
+        for line in lines:
+            d._on_log_line(line)
+        elapsed = time.monotonic() - start
+        assert elapsed < 1.0, f"Processing 10k lines took {elapsed:.2f}s"

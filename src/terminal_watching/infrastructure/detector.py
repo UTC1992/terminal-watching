@@ -11,9 +11,13 @@ SUPPORTED_TYPES = [
         "detect_by": "build.gradle + src/main/java",
         "files": ["build.gradle"],
         "command": "./gradlew bootRun",
-        "ready_pattern": "Started Application",
+        "ready_pattern": "Started \\w+.*in \\d",
         "error_patterns": ["BUILD FAILED", "Exception", "ERROR"],
         "port": 8080,
+        "status_patterns": [
+            {"pattern": "Task.*:compile", "status": "COMPILING"},
+            {"pattern": "Starting \\w+.*on|Tomcat initialized", "status": "BOOTING"},
+        ],
         "watch": {
             "dirs": ["src"],
             "extensions": ["java", "kt", "graphqls", "yml", "yaml", "properties"],
@@ -25,9 +29,13 @@ SUPPORTED_TYPES = [
         "detect_by": "pom.xml + src/main/java",
         "files": ["pom.xml"],
         "command": "./mvnw spring-boot:run",
-        "ready_pattern": "Started Application",
+        "ready_pattern": "Started \\w+.*in \\d",
         "error_patterns": ["BUILD FAILURE", "Exception", "ERROR"],
         "port": 8080,
+        "status_patterns": [
+            {"pattern": "Compiling|compile", "status": "COMPILING"},
+            {"pattern": "Starting \\w+.*on|Tomcat initialized", "status": "BOOTING"},
+        ],
         "watch": {
             "dirs": ["src"],
             "extensions": ["java", "kt", "xml", "yml", "yaml", "properties"],
@@ -42,6 +50,9 @@ SUPPORTED_TYPES = [
         "ready_pattern": "ready on|Ready in|started server on",
         "error_patterns": ["Error", "error", "EADDRINUSE"],
         "port": 3000,
+        "status_patterns": [
+            {"pattern": "compiling|Compiling", "status": "COMPILING"},
+        ],
         "watch": {
             "dirs": ["src", "app", "pages", "components"],
             "extensions": ["ts", "tsx", "js", "jsx", "css", "scss"],
@@ -56,6 +67,9 @@ SUPPORTED_TYPES = [
         "ready_pattern": "ready in|Local:|VITE",
         "error_patterns": ["Error", "error", "EADDRINUSE"],
         "port": 5173,
+        "status_patterns": [
+            {"pattern": "optimizing|bundling", "status": "COMPILING"},
+        ],
         "watch": {
             "dirs": ["src"],
             "extensions": ["ts", "tsx", "js", "jsx", "vue", "svelte", "css", "scss"],
@@ -70,6 +84,7 @@ SUPPORTED_TYPES = [
         "ready_pattern": "listening on|started|ready|Server running",
         "error_patterns": ["Error", "error", "EADDRINUSE"],
         "port": 3000,
+        "status_patterns": [],
         "watch": {
             "dirs": ["src", "lib", "routes"],
             "extensions": ["ts", "js", "json"],
@@ -84,6 +99,9 @@ SUPPORTED_TYPES = [
         "ready_pattern": "listening|started|serving",
         "error_patterns": ["panic", "fatal", "error"],
         "port": 8080,
+        "status_patterns": [
+            {"pattern": "building|compiling", "status": "COMPILING"},
+        ],
         "watch": {
             "dirs": ["."],
             "extensions": ["go", "html", "yml", "yaml"],
@@ -98,6 +116,9 @@ SUPPORTED_TYPES = [
         "ready_pattern": "listening|started|serving",
         "error_patterns": ["error\\[", "panic", "fatal"],
         "port": 8080,
+        "status_patterns": [
+            {"pattern": "Compiling", "status": "COMPILING"},
+        ],
         "watch": {
             "dirs": ["src"],
             "extensions": ["rs", "toml", "html"],
@@ -112,6 +133,7 @@ SUPPORTED_TYPES = [
         "ready_pattern": "Starting development server|Watching for file changes",
         "error_patterns": ["Error", "Exception", "Traceback"],
         "port": 8000,
+        "status_patterns": [],
         "watch": {
             "dirs": ["."],
             "extensions": ["py", "html", "css", "js", "yml"],
@@ -126,6 +148,7 @@ SUPPORTED_TYPES = [
         "ready_pattern": "Running on|Serving Flask app",
         "error_patterns": ["Error", "Exception", "Traceback"],
         "port": 5000,
+        "status_patterns": [],
         "watch": {
             "dirs": ["."],
             "extensions": ["py", "html", "css", "js"],
@@ -140,6 +163,10 @@ SUPPORTED_TYPES = [
         "ready_pattern": "ready|started|listening|Running",
         "error_patterns": ["error", "Error", "fatal"],
         "port": None,
+        "status_patterns": [
+            {"pattern": "Building|Pulling", "status": "COMPILING"},
+            {"pattern": "Starting|Creating", "status": "BOOTING"},
+        ],
         "watch": {
             "dirs": ["src", "."],
             "extensions": [],
@@ -154,6 +181,10 @@ SUPPORTED_TYPES = [
         "ready_pattern": "ready|started|listening|Running",
         "error_patterns": ["error", "Error", "fatal"],
         "port": None,
+        "status_patterns": [
+            {"pattern": "Building|Pulling", "status": "COMPILING"},
+            {"pattern": "Starting|Creating", "status": "BOOTING"},
+        ],
         "watch": {
             "dirs": ["src", "."],
             "extensions": [],
@@ -219,6 +250,7 @@ def detect_project(directory: str) -> Optional[dict]:
                 'ready_pattern': project_type['ready_pattern'],
                 'error_patterns': project_type['error_patterns'],
                 'port': project_type['port'],
+                'status_patterns': project_type.get('status_patterns', []),
                 'watch': dict(project_type['watch']),
             }
 

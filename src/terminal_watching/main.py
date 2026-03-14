@@ -82,6 +82,13 @@ def cmd_run(project_dir: str, config_path: str = None) -> None:
 
     extensions = config.get('watch', {}).get('extensions', [])
 
+    # If no status_patterns in config, try to get defaults from detector
+    status_patterns = config.get('status_patterns', [])
+    if not status_patterns:
+        detected = detect_project(project_dir)
+        if detected:
+            status_patterns = detected.get('status_patterns', [])
+
     dashboard = Dashboard(
         process_runner=AppProcessRunner(),
         log_watcher=FileLogWatcher(),
@@ -96,6 +103,7 @@ def cmd_run(project_dir: str, config_path: str = None) -> None:
         port=config.get('port', None),
         ready_pattern=config.get('ready_pattern', ''),
         error_patterns=config.get('error_patterns', []),
+        status_patterns=status_patterns,
     )
 
     try:

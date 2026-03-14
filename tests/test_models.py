@@ -1,5 +1,6 @@
 """Tests for domain models."""
 
+import time
 import pytest
 from terminal_watching.domain.models import AppState, AppStatus, Tab
 
@@ -122,3 +123,73 @@ class TestMaxScroll:
     def test_zero_lines(self):
         state = AppState()
         assert state.max_scroll(10) == 0
+
+
+class TestUptime:
+    def test_default_start_time_is_none(self):
+        state = AppState()
+        assert state.started_at is None
+
+    def test_uptime_returns_zero_when_not_started(self):
+        state = AppState()
+        assert state.uptime_seconds == 0
+
+    def test_uptime_counts_seconds(self):
+        state = AppState(started_at=time.monotonic() - 65)
+        assert state.uptime_seconds >= 65
+
+    def test_uptime_display_format(self):
+        state = AppState(started_at=time.monotonic() - 125)
+        display = state.uptime_display
+        # 125 seconds = 2m 05s
+        assert display == "02:05" or display == "02:06"  # allow 1s tolerance
+
+    def test_uptime_display_hours(self):
+        state = AppState(started_at=time.monotonic() - 3661)
+        display = state.uptime_display
+        # 3661 seconds = 1h 01m 01s
+        assert display.startswith("1:01:")
+
+    def test_uptime_display_when_stopped(self):
+        state = AppState()
+        assert state.uptime_display == "00:00"
+
+
+class TestSpinner:
+    def test_spinner_when_starting(self):
+        state = AppState(status=AppStatus.STARTING)
+        spinner = state.spinner_frame
+        assert spinner in AppState.SPINNER_FRAMES
+
+    def test_spinner_when_compiling(self):
+        state = AppState(status=AppStatus.COMPILING)
+        assert state.spinner_frame in AppState.SPINNER_FRAMES
+
+    def test_spinner_when_ready(self):
+        state = AppState(status=AppStatus.READY)
+        assert state.spinner_frame == ""
+
+    def test_spinner_when_stopped(self):
+        state = AppState(status=AppStatus.STOPPED)
+        assert state.spinner_frame == ""
+
+    def test_spinner_when_error(self):
+        state = AppState(status=AppStatus.ERROR)
+        assert state.spinner_frame == ""
+
+    def test_spinner_changes_over_time(self):
+        state = AppState(status=AppStatus.STARTING)
+        frames = set()
+        for _ in range(20):
+            frames.add(state.spinner_frame)
+            time.sleep(0.05)
+        assert len(frames) > 1
+
+    def test_is_loading_property(self):
+        assert AppState(status=AppStatus.STARTING).is_loading is True
+        assert AppState(status=AppStatus.COMPILING).is_loading is True
+        assert AppState(status=AppStatus.BOOTING).is_loading is True
+        assert AppState(status=AppStatus.RESTARTING).is_loading is True
+        assert AppState(status=AppStatus.READY).is_loading is False
+        assert AppState(status=AppStatus.STOPPED).is_loading is False
+        assert AppState(status=AppStatus.ERROR).is_loading is False

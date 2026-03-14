@@ -1,6 +1,7 @@
+import time
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 
 class AppStatus(Enum):
@@ -19,8 +20,16 @@ class Tab(Enum):
     REQUESTS = "requests"
 
 
+_LOADING_STATUSES = frozenset({
+    AppStatus.STARTING, AppStatus.COMPILING,
+    AppStatus.BOOTING, AppStatus.RESTARTING,
+})
+
+
 @dataclass
 class AppState:
+    SPINNER_FRAMES = ('|', '/', '-', '\\', '|', '/', '-', '\\')
+
     status: AppStatus = AppStatus.STOPPED
     message: str = ""
     active_tab: Tab = Tab.LOGS
@@ -32,6 +41,34 @@ class AppState:
     request_lines: List[str] = field(default_factory=list)
     scroll_offset: int = 0
     wrap_lines: bool = True
+    started_at: Optional[float] = None
+
+    @property
+    def is_loading(self) -> bool:
+        return self.status in _LOADING_STATUSES
+
+    @property
+    def spinner_frame(self) -> str:
+        if not self.is_loading:
+            return ""
+        idx = int(time.monotonic() * 8) % len(self.SPINNER_FRAMES)
+        return self.SPINNER_FRAMES[idx]
+
+    @property
+    def uptime_seconds(self) -> int:
+        if self.started_at is None:
+            return 0
+        return int(time.monotonic() - self.started_at)
+
+    @property
+    def uptime_display(self) -> str:
+        total = self.uptime_seconds
+        hours = total // 3600
+        minutes = (total % 3600) // 60
+        seconds = total % 60
+        if hours > 0:
+            return f"{hours}:{minutes:02d}:{seconds:02d}"
+        return f"{minutes:02d}:{seconds:02d}"
 
     @property
     def active_lines(self) -> List[str]:

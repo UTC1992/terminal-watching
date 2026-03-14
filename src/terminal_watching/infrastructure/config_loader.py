@@ -27,6 +27,13 @@ def save_config(path: str, config: dict) -> None:
         for p in error_patterns:
             lines.append(f"  - \"{p}\"")
 
+    status_patterns = config.get('status_patterns', [])
+    if status_patterns:
+        lines.append("status_patterns:")
+        for sp in status_patterns:
+            lines.append(f"  - pattern: \"{sp['pattern']}\"")
+            lines.append(f"    status: \"{sp['status']}\"")
+
     watch = config.get('watch', {})
     lines.append("watch:")
 
@@ -59,6 +66,7 @@ def load_config(path: str) -> dict:
         'port': None,
         'ready_pattern': '',
         'error_patterns': [],
+        'status_patterns': [],
         'watch': {
             'dirs': [],
             'extensions': [],
@@ -72,6 +80,7 @@ def load_config(path: str) -> dict:
     # Simple YAML-like parser for our specific format
     current_list = None
     current_section = None
+    current_status_entry = None
 
     for line in content.split('\n'):
         stripped = line.strip()
@@ -84,6 +93,7 @@ def load_config(path: str) -> dict:
             key, value = match.group(1), match.group(2).strip()
             current_list = None
             current_section = None
+            current_status_entry = None
 
             if key == 'name':
                 config['name'] = value
@@ -98,9 +108,24 @@ def load_config(path: str) -> dict:
                 config['ready_pattern'] = value
             elif key == 'error_patterns':
                 current_list = config['error_patterns']
+            elif key == 'status_patterns':
+                current_section = 'status_patterns'
             elif key == 'watch':
                 current_section = 'watch'
             continue
+
+        # Parse status_patterns entries
+        if current_section == 'status_patterns':
+            pat_match = re.match(r'^-\s*pattern:\s*"?([^"]*)"?\s*$', stripped)
+            if pat_match:
+                current_status_entry = {'pattern': pat_match.group(1).strip()}
+                config['status_patterns'].append(current_status_entry)
+                continue
+            if current_status_entry is not None:
+                stat_match = re.match(r'^status:\s*"?([^"]*)"?\s*$', stripped)
+                if stat_match:
+                    current_status_entry['status'] = stat_match.group(1).strip()
+                    continue
 
         # Section keys (watch.dirs, watch.extensions, etc.)
         if current_section == 'watch':

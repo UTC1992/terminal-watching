@@ -34,8 +34,7 @@ class FileLogWatcher(LogWatcher):
             time.sleep(0.1)
 
         with open(log_file, 'r') as f:
-            # Go to end of file
-            f.seek(0, 2)
+            # Read from beginning — process just started with a fresh log file
             while self._running:
                 line = f.readline()
                 if line:

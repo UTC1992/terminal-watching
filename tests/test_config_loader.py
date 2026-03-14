@@ -138,3 +138,23 @@ class TestRoundTrip:
         assert result["name"] == "Minimal"
         assert result["command"] == "make run"
         assert result["port"] is None
+
+    def test_status_patterns_round_trip(self, config_path):
+        config = {
+            **SAMPLE_CONFIG,
+            "status_patterns": [
+                {"pattern": "Task.*:compile", "status": "COMPILING"},
+                {"pattern": "Starting \\w+.*on", "status": "BOOTING"},
+            ],
+        }
+        save_config(config_path, config)
+        result = load_config(config_path)
+        assert len(result["status_patterns"]) == 2
+        assert result["status_patterns"][0]["pattern"] == "Task.*:compile"
+        assert result["status_patterns"][0]["status"] == "COMPILING"
+        assert result["status_patterns"][1]["status"] == "BOOTING"
+
+    def test_no_status_patterns(self, config_path):
+        save_config(config_path, SAMPLE_CONFIG)
+        result = load_config(config_path)
+        assert result["status_patterns"] == []

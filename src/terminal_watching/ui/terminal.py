@@ -89,11 +89,18 @@ class CursesRenderer(UIRenderer):
         win.addstr(1, 2, title[:cols - 4], curses.A_BOLD)
         win.addstr(2, 0, line, curses.A_BOLD)
 
-        # Status
+        # Status + spinner + uptime
         status_text = state.status.value
         color = self._status_color(state.status)
         win.addstr(3, 2, "Status: ")
         win.addstr(3, 10, status_text, color | curses.A_BOLD)
+        spinner = state.spinner_frame
+        if spinner:
+            win.addstr(3, 11 + len(status_text), f" {spinner}", color | curses.A_BOLD)
+        uptime = state.uptime_display
+        uptime_x = cols - len(uptime) - 3
+        if uptime_x > len(status_text) + 14:
+            win.addstr(3, uptime_x, uptime, curses.color_pair(4) | curses.A_BOLD)
 
         # URL (dynamic port)
         if state.port:

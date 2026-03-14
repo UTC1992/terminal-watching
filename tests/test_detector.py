@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import pytest
 from terminal_watching.infrastructure.detector import (
     detect_project,
@@ -86,6 +87,18 @@ class TestDetectProject:
         assert result is not None
         assert "Spring Boot" in result["name"] or "Gradle" in result["name"]
         assert result["port"] == 8080
+
+    def test_spring_boot_ready_pattern_matches_real_apps(self, project_dir):
+        """Ready pattern must match real Spring Boot startup lines."""
+        (project_dir / "build.gradle").touch()
+        (project_dir / "src" / "main" / "java").mkdir(parents=True)
+        result = detect_project(str(project_dir))
+        pattern = re.compile(result["ready_pattern"])
+        # Real Spring Boot log lines
+        assert pattern.search("Started ContributionsGraphApplication in 12.345 seconds")
+        assert pattern.search("Started MyApp in 5.2 seconds")
+        assert pattern.search("Started Application in 3 seconds")
+        assert not pattern.search("Starting Application context")
 
     def test_spring_boot_maven(self, project_dir):
         (project_dir / "pom.xml").touch()
@@ -193,7 +206,8 @@ class TestDetectProject:
 class TestSupportedTypes:
     def test_all_have_required_keys(self):
         required = {"name", "detect_by", "files", "command",
-                    "ready_pattern", "error_patterns", "port", "watch"}
+                    "ready_pattern", "error_patterns", "port",
+                    "status_patterns", "watch"}
         for t in SUPPORTED_TYPES:
             missing = required - set(t.keys())
             assert not missing, f"{t['name']} missing keys: {missing}"

@@ -7,6 +7,8 @@ from terminal_watching.domain.ports import ProcessRunner, LogWatcher, FileWatche
 
 MAX_LINES = 5000
 REQUEST_PATTERNS = re.compile(r'Completed [0-9]|servlet\.request|"(POST|GET|PUT|DELETE)')
+TIME_PATTERN = re.compile(r'(\d+\.?\d*\s*(?:seconds|ms|s))')
+FATAL_KEYWORDS = frozenset(('FAILED', 'fatal', 'panic', 'EADDRINUSE'))
 
 
 class Dashboard:
@@ -27,6 +29,7 @@ class Dashboard:
         port: int = None,
         ready_pattern: str = '',
         error_patterns: list[str] = None,
+        status_patterns: list[dict] = None,
     ):
         self._process = process_runner
         self._log_watcher = log_watcher
@@ -41,6 +44,14 @@ class Dashboard:
         self._port = port
         self._ready_re = re.compile(ready_pattern) if ready_pattern else None
         self._error_re = re.compile('|'.join(error_patterns)) if error_patterns else re.compile(r'ERROR|Exception')
+        # Pre-compile status transition patterns
+        self._status_transitions = []
+        if status_patterns:
+            for sp in status_patterns:
+                self._status_transitions.append((
+                    re.compile(sp['pattern']),
+                    AppStatus[sp['status']],
+                ))
         self._state = AppState()
         self._state.project_name = project_name
         self._state.port = port
@@ -88,6 +99,9 @@ class Dashboard:
                 self._scroll_frac = 0.0
 
             now = time.monotonic()
+            # Refresh at least every second for uptime counter
+            if now - last_render >= 1.0:
+                self._dirty = True
             if had_key or (self._dirty and now - last_render > 0.03):
                 with self._lock:
                     self._ui.render(self._state)
@@ -173,6 +187,7 @@ class Dashboard:
             self._state.request_lines.clear()
             self._state.scroll_offset = 0
 
+        self._state.started_at = time.monotonic()
         self._process.start(self._command, self._log_file)
         self._log_watcher.start(self._log_file, self._on_log_line)
 
@@ -198,8 +213,9 @@ class Dashboard:
             if len(self._state.log_lines) > MAX_LINES:
                 self._state.log_lines = self._state.log_lines[-MAX_LINES:]
 
-            # Classify as error
-            if self._error_re and self._error_re.search(line):
+            # Classify as error (single check, reuse result)
+            is_error = self._error_re.search(line) if self._error_re else None
+            if is_error:
                 self._state.error_lines.append(line)
                 if len(self._state.error_lines) > MAX_LINES:
                     self._state.error_lines = self._state.error_lines[-MAX_LINES:]
@@ -213,25 +229,30 @@ class Dashboard:
             # Detect ready
             if self._ready_re and self._ready_re.search(line):
                 self._state.status = AppStatus.READY
-                # Try to extract time
-                time_match = re.search(r'(\d+\.?\d*\s*(?:seconds|ms|s))', line)
+                time_match = TIME_PATTERN.search(line)
                 if time_match:
                     self._state.startup_time = time_match.group(1)
                     self._state.message = f"Started in {self._state.startup_time}"
                 else:
                     self._state.message = "Ready"
 
-            # Detect errors in status (only if not already ready)
-            if self._state.status != AppStatus.READY:
-                if self._error_re and self._error_re.search(line):
-                    # Only set ERROR status for severe errors, not warnings
-                    if any(p in line for p in ['FAILED', 'fatal', 'panic', 'EADDRINUSE']):
-                        self._state.status = AppStatus.ERROR
-                        self._state.message = "Failed - press e to see errors"
+            # Detect fatal errors (only if not already ready, reuse error match)
+            elif is_error and self._state.status != AppStatus.READY:
+                if any(kw in line for kw in FATAL_KEYWORDS):
+                    self._state.status = AppStatus.ERROR
+                    self._state.message = "Failed - press e to see errors"
 
-            # Auto-scroll
+            # Detect intermediate status transitions (only before READY)
+            if self._status_transitions and self._state.status != AppStatus.READY:
+                for pattern_re, status in self._status_transitions:
+                    if pattern_re.search(line) and self._state.status != status:
+                        self._state.status = status
+                        self._state.message = ""
+
+            # Auto-scroll (use line count directly, avoid expensive wrap calc)
             if self._auto_scroll:
-                self._state.scroll_offset = self._state.max_scroll(self._content_rows(), self._content_cols())
+                total = len(self._state.active_lines)
+                self._state.scroll_offset = max(0, total - self._content_rows())
 
             self._dirty = True
 

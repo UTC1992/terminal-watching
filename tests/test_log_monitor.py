@@ -28,10 +28,10 @@ class TestFileLogWatcher:
         time.sleep(0.3)
         watcher.stop()
 
+        # Reads from beginning since process starts fresh log
+        assert "existing line" in collected
         assert "new line 1" in collected
         assert "new line 2" in collected
-        # Should NOT include the existing line (seeks to end)
-        assert "existing line" not in collected
 
     def test_waits_for_file(self, tmp_path):
         log_file = str(tmp_path / "delayed.log")
@@ -41,15 +41,8 @@ class TestFileLogWatcher:
 
         time.sleep(0.2)
 
-        # Create file after watcher started — watcher seeks to end,
-        # so we need to write a line AFTER the file is opened
+        # Create file after watcher started
         with open(log_file, "w") as f:
-            f.flush()
-
-        time.sleep(0.3)
-
-        # Now append a line after the watcher has opened and seeked
-        with open(log_file, "a") as f:
             f.write("delayed line\n")
 
         time.sleep(0.3)

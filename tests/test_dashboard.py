@@ -126,12 +126,11 @@ class TestHandleKey:
         d._handle_key("UP")
         assert d._state.scroll_offset == 0
 
-    def test_trackpad_scroll_adds_velocity(self):
+    def test_unknown_key_ignored(self):
         d = make_dashboard()
-        d._handle_key("SCROLL_DOWN")
-        assert d._scroll_velocity > 0
-        d._handle_key("SCROLL_UP")
-        # velocity reduced or reversed
+        d._running = True
+        d._handle_key("z")
+        assert d._running is True
 
 
 class TestOnLogLine:
@@ -296,8 +295,21 @@ class TestRequestPatterns:
         assert REQUEST_PATTERNS.search('"POST /users" 201')
         assert REQUEST_PATTERNS.search('"DELETE /item/1" 204')
 
+    def test_spring_boot_method_bracket(self):
+        line = "Missing auth token: remote-(method-[POST] host-[0:0:0:0:0:0:0:1] port-[63404] requestUri-[/graphql])"
+        assert REQUEST_PATTERNS.search(line)
+
+    def test_spring_boot_nio_exec(self):
+        line = "2026-03-13 [nio-8080-exec-2] c.g.c.web.RequestContextBuilder: requestUri-[/graphql]"
+        assert REQUEST_PATTERNS.search(line)
+
+    def test_standard_access_log(self):
+        assert REQUEST_PATTERNS.search('] POST /api/users 201')
+        assert REQUEST_PATTERNS.search('] GET /health 200')
+
     def test_no_match(self):
         assert not REQUEST_PATTERNS.search("just a regular log line")
+        assert not REQUEST_PATTERNS.search("Starting Application on localhost")
 
 
 class TestPerformance:

@@ -1,4 +1,5 @@
 import re
+import signal
 import threading
 import time
 from terminal_watching.domain.models import AppState, AppStatus, Tab
@@ -6,7 +7,14 @@ from terminal_watching.domain.ports import ProcessRunner, LogWatcher, FileWatche
 
 
 MAX_LINES = 5000
-REQUEST_PATTERNS = re.compile(r'Completed [0-9]|servlet\.request|"(POST|GET|PUT|DELETE)')
+REQUEST_PATTERNS = re.compile(
+    r'Completed [0-9]'
+    r'|servlet\.request'
+    r'|"(POST|GET|PUT|DELETE|PATCH) /'
+    r'|method-\[(POST|GET|PUT|DELETE|PATCH)\]'
+    r'|\] (POST|GET|PUT|DELETE|PATCH) '
+    r'|nio-\d+-exec-\d+\].*requestUri'
+)
 TIME_PATTERN = re.compile(r'(\d+\.?\d*\s*(?:seconds|ms|s))')
 FATAL_KEYWORDS = frozenset(('FAILED', 'fatal', 'panic', 'EADDRINUSE'))
 
@@ -61,9 +69,12 @@ class Dashboard:
         self._dirty = True
         self._scroll_velocity = 0.0
         self._scroll_frac = 0.0  # fractional scroll accumulator
+        self._prev_sigint = signal.SIG_DFL
 
     def run(self) -> None:
         self._running = True
+        # Ignore Ctrl+C — only 'q' quits. Allows copy in terminal.
+        self._prev_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
         self._ui.setup()
         try:
             self._start_app()
@@ -99,8 +110,10 @@ class Dashboard:
                 self._scroll_frac = 0.0
 
             now = time.monotonic()
-            # Refresh at least every second for uptime counter
-            if now - last_render >= 1.0:
+            # Refresh for spinner (every 125ms) or uptime (every 1s)
+            if self._state.is_loading and now - last_render >= 0.125:
+                self._dirty = True
+            elif now - last_render >= 1.0:
                 self._dirty = True
             if had_key or (self._dirty and now - last_render > 0.03):
                 with self._lock:
@@ -126,10 +139,6 @@ class Dashboard:
                 self._scroll(-1)
             elif key == 'DOWN':
                 self._scroll(1)
-            elif key == 'SCROLL_UP':
-                self._add_scroll_impulse(-0.15)
-            elif key == 'SCROLL_DOWN':
-                self._add_scroll_impulse(0.15)
             elif key == 'PGUP':
                 self._scroll(-20)
             elif key == 'PGDN':
@@ -267,6 +276,7 @@ class Dashboard:
         self._start_app()
 
     def _shutdown(self) -> None:
+        signal.signal(signal.SIGINT, self._prev_sigint)
         self._file_watcher.stop()
         self._log_watcher.stop()
         self._process.stop()

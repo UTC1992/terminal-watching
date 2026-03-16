@@ -22,10 +22,8 @@ class CursesRenderer(UIRenderer):
         curses.curs_set(0)
         self._screen.keypad(True)
         self._screen.nodelay(True)
-        # Enable mouse wheel support
-        curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
-        # SGR mouse mode for better wheel detection on macOS
-        print('\033[?1000h\033[?1002h\033[?1006h', end='', flush=True)
+        # No mouse capture — allow text selection for copy (Cmd+C / Ctrl+C)
+        # Scroll with keyboard: UP/DOWN, PGUP/PGDN
 
         if curses.has_colors():
             curses.start_color()
@@ -41,7 +39,6 @@ class CursesRenderer(UIRenderer):
 
     def teardown(self) -> None:
         if self._screen:
-            print('\033[?1006l\033[?1002l\033[?1000l', end='', flush=True)
             curses.nocbreak()
             self._screen.keypad(False)
             curses.echo()
@@ -140,7 +137,7 @@ class CursesRenderer(UIRenderer):
             x += len(f" {label} ") + 1
 
         # Controls
-        controls = "| r=restart  q=quit  w=wrap  scroll=UP/DOWN"
+        controls = "| r=restart  q=quit  w=wrap  UP/DOWN/PGUP/PGDN"
         if x + len(controls) + 1 < cols:
             win.addstr(0, x + 1, controls, curses.A_DIM)
 
@@ -193,45 +190,6 @@ class CursesRenderer(UIRenderer):
         try:
             ch = self._screen.getch()
             if ch == -1:
-                return None
-            if ch == curses.KEY_MOUSE:
-                try:
-                    _, _, _, _, bstate = curses.getmouse()
-                    # Wheel up
-                    if bstate & curses.BUTTON4_PRESSED:
-                        return 'SCROLL_UP'
-                    # Wheel down — try multiple constants
-                    BUTTON5 = getattr(curses, 'BUTTON5_PRESSED', 2097152)
-                    if bstate & BUTTON5:
-                        return 'SCROLL_DOWN'
-                    # Some terminals report wheel as button 4/5 release
-                    if bstate & curses.BUTTON4_RELEASED:
-                        return 'SCROLL_UP'
-                except curses.error:
-                    pass
-                return None
-            # SGR mouse sequences come as escape sequences
-            # Parse them: \033[<btn;x;yM or \033[<btn;x;ym
-            if ch == 27:  # ESC
-                seq = ''
-                while True:
-                    c = self._screen.getch()
-                    if c == -1:
-                        break
-                    seq += chr(c)
-                    if c in (ord('M'), ord('m'), ord('~')):
-                        break
-                    if len(seq) > 20:
-                        break
-                # SGR format: [<btn;x;yM
-                if seq.startswith('[<'):
-                    parts = seq[2:].rstrip('Mm').split(';')
-                    if len(parts) >= 1:
-                        btn = int(parts[0])
-                        if btn == 64:  # wheel up
-                            return 'SCROLL_UP'
-                        if btn == 65:  # wheel down
-                            return 'SCROLL_DOWN'
                 return None
             if ch == curses.KEY_UP:
                 return 'UP'
